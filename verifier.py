@@ -7,10 +7,10 @@ class StepVerifier:
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            device_map="auto",
-            torch_dtype=torch.float16 if self.device.startswith("cuda") else torch.float32
-        )
+        model_name,
+        dtype=torch.float16 if self.device.startswith("cuda") else torch.float32
+    ).to(self.device)
+
 
     def verify(self, task, facts, steps, candidate):
         """
@@ -112,3 +112,4 @@ if __name__ == "__main__":
     print("ラベル:", verdict)
     print("スコア:", score)
     print("理由:", reason)
+
