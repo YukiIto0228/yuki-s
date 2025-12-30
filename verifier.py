@@ -3,7 +3,7 @@ import torch
 
 class StepVerifier:
     
-    def __init__(self, model_name="Qwen/Qwen2.5-3B-Instruct", device=None):
+    def __init__(self, model_name="gpt2", device=None):
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -112,4 +112,5 @@ if __name__ == "__main__":
     print("ラベル:", verdict)
     print("スコア:", score)
     print("理由:", reason)
+
 
