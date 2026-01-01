@@ -4,32 +4,22 @@ import torch.nn.functional as F
 
 
 class StepVerifier:
-    """
-    DeBERTa-v3-small (NLI) を用いた考察ステップ検証器
-    """
 
     def __init__(self, model_name="cross-encoder/nli-deberta-v3-small", device=None):
-        # デバイス設定
         self.device = device if device else (
             "cuda" if torch.cuda.is_available() else "cpu"
         )
 
-        # トークナイザ・モデルの読み込み
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(
             model_name
         ).to(self.device)
 
-        # NLIラベル対応（モデル仕様）
+        # NLIラベル対応
         self.id2label = self.model.config.id2label
-        # 例: {0: 'contradiction', 1: 'neutral', 2: 'entailment'}
 
     def verify(self, task, facts, steps, candidate):
-        """
-        考察ステップの妥当性を評価する
-        """
 
-        # 前提文（premise）を構築
         premise = (
             f"課題: {task}\n"
             f"観察結果: {facts}\n"
@@ -57,7 +47,7 @@ class StepVerifier:
         pred_id = torch.argmax(probs).item()
         nli_label = self.id2label[pred_id]
 
-        # NLI → あなたの評価ラベルへ変換
+        # NLIを評価ラベルへ変換
         verdict_map = {
             "entailment": ("妥当", 1.0),
             "neutral": ("根拠不足", 0.5),
@@ -88,4 +78,5 @@ if __name__ == "__main__":
     print("ラベル:", verdict)
     print("スコア:", score)
     print("理由:", reason)
+
 
