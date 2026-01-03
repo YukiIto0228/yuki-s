@@ -150,8 +150,13 @@ def beam_search(
 
 
 if __name__ == "__main__":
-    task = "実験Aの結果を解釈し、考察を行う。"
-    facts = "条件Xで結果Aが観察された。"
+
+    print("【元の文章（観察結果・事実）を入力してください】")
+    facts = input("> ")
+
+    print("\n【課題（どういう推論・出力をしたいか）を入力してください】")
+    task = input("> ")
+
 
     generator = StepGenerator()
     verifier = StepVerifier()
