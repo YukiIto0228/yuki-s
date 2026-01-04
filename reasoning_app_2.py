@@ -13,7 +13,7 @@ class StepVerifier:
 
     def __init__(
         self,
-        model_name="cl-tohoku/bert-base-japanese-v3",
+        model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         device=None
     ):
         self.device = device if device else (
@@ -209,4 +209,5 @@ if __name__ == "__main__":
         print(f"\n[候補 {i+1}] 累積スコア: {node.score:.2f}")
         for step in node.steps:
             print("-", step)
+
 
