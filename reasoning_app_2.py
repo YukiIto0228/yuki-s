@@ -1,4 +1,5 @@
 import torch
+import re
 import torch.nn.functional as F
 from transformers import (
     AutoTokenizer,
@@ -209,5 +210,6 @@ if __name__ == "__main__":
         print(f"\n[候補 {i+1}] 累積スコア: {node.score:.2f}")
         for step in node.steps:
             print("-", step)
+
 
 
