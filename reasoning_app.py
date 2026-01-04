@@ -2,15 +2,12 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-# =========================
-# Step Verifier (Critic)
-# =========================
 class StepVerifier:
     """
     LLM-based step verifier (approximate reward model)
     """
 
-    def __init__(self, model_name="gpt2", device=None):
+    def __init__(self, model_name="cross-encoder/nli-deberta-v3-small", device=None):
         self.device = device if device else (
             "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -81,14 +78,8 @@ class StepVerifier:
         return verdict, score, reason
 
 
-# =========================
-# Step Generator
-# =========================
 class StepGenerator:
-    """
-    Generate next reasoning steps
-    """
-
+  
     def __init__(self, model_name="rinna/japanese-gpt2-small", device=None):
         self.device = device if device else (
             "cuda" if torch.cuda.is_available() else "cpu"
@@ -185,9 +176,6 @@ def beam_search(task, facts, beam_size, max_depth, M, generator, verifier):
     return beam
 
 
-# =========================
-# Main
-# =========================
 if __name__ == "__main__":
 
     print("【元の文章（観察結果・事実）を入力してください】")
