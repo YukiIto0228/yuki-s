@@ -7,7 +7,7 @@ class StepVerifier:
     LLM-based step verifier (approximate reward model)
     """
 
-    def __init__(self, model_name="cross-encoder/nli-deberta-v3-small", device=None):
+    def __init__(self, model_name="rinna/japanese-gpt2-small", device=None):
         self.device = device if device else (
             "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -202,3 +202,4 @@ if __name__ == "__main__":
         print(f"\n[候補 {i+1}] 累積スコア: {node.score:.2f}")
         for step in node.steps:
             print("-", step)
+
