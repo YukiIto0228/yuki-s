@@ -14,6 +14,7 @@ class StepVerifier:
         ).to(self.device)
         self.labels = ["妥当", "根拠不足", "飛躍"]
 
+    # 文脈との整合性スコア
     def _coherence_score(self, previous_steps, candidate):
         if not previous_steps:
             return 0.5
@@ -23,12 +24,8 @@ class StepVerifier:
         overlap = len(prev_words & cand_words)
         return min(max(overlap / (len(cand_words) + 1e-6), 0.3), 1.0)
 
-    def _symptom_match_score(self, symptoms, candidate):
-        # 候補ステップ内に症状名が出ているかで簡易スコア
-        matches = sum(1 for s in symptoms if s in candidate)
-        return min(matches / max(len(symptoms), 1), 1.0)
-
-    def verify(self, task, steps, candidate, symptoms):
+    # 推論ステップの妥当性評価
+    def verify(self, task, steps, candidate):
         context = "\n".join(steps) if steps else "（なし）"
         text = f"""
 課題:
@@ -40,7 +37,9 @@ class StepVerifier:
 次の推論ステップ候補:
 {candidate}
 """
-        inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(self.device)
+        inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
         with torch.no_grad():
             logits = self.model(**inputs).logits
             probs = F.softmax(logits, dim=-1)[0]
@@ -49,14 +48,12 @@ class StepVerifier:
         verdict = self.labels[cls_idx.item()]
 
         coherence_score = self._coherence_score(steps, candidate)
-        symptom_score = self._symptom_match_score(symptoms, candidate)
-
-        final_score = 0.6 * cls_score.item() + 0.2 * coherence_score + 0.2 * symptom_score
-        reason = f"分類確率={cls_score:.2f}, 接続={coherence_score:.2f}, 症状一致={symptom_score:.2f}"
+        final_score = 0.7 * cls_score.item() + 0.3 * coherence_score
+        reason = f"分類確率={cls_score:.2f}, 接続={coherence_score:.2f}"
 
         return verdict, float(final_score), reason
 
-# === StepGenerator: 次の症例候補や質問を生成 ===
+# === StepGenerator: 次の症例候補を生成 ===
 class StepGenerator:
     def __init__(self, model_name="rinna/japanese-gpt2-small", device=None):
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,7 +63,8 @@ class StepGenerator:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def generate(self, context, num_candidates=3, max_new_tokens=50):
-        inputs = self.tokenizer(context, return_tensors="pt").to(self.device)
+        inputs = self.tokenizer(context, return_tensors="pt", truncation=True, max_length=512)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}  # 修正
         input_len = inputs["input_ids"].shape[1]
 
         outputs = self.model.generate(
@@ -85,7 +83,7 @@ class StepGenerator:
                 steps.append(step)
         return steps
 
-# === ReasoningNode: 推論ステップとスコア管理 ===
+# === ReasoningNode: 推論ステップとスコアを管理 ===
 class ReasoningNode:
     def __init__(self, steps=None, score=0.0):
         self.steps = steps if steps else []
@@ -94,13 +92,13 @@ class ReasoningNode:
     def extend(self, step, step_score):
         return ReasoningNode(self.steps + [step], self.score + step_score)
 
-# === 段階的症例推論 ===
+# === 逐次ステップ推論（症例推測） ===
 def sequential_reasoning(task, patient_info, symptoms, generator, verifier, max_steps=5):
     node = ReasoningNode()
-    facts = f"患者情報: {patient_info}\n症状: {', '.join(symptoms)}"
+    facts = f"患者情報: {patient_info}\n症状: {symptoms}"
 
     for i in range(max_steps):
-        context = f"課題: {task}\n観察結果:\n{facts}\nこれまでの推論:\n{' '.join(node.steps)}\n次の推論ステップ:"
+        context = f"課題: {task}\n観察結果:\n{facts}\nこれまでの推論:\n{' '.join(node.steps)}\n次の推論:"
         candidates = generator.generate(context, num_candidates=3)
 
         if not candidates:
@@ -110,7 +108,7 @@ def sequential_reasoning(task, patient_info, symptoms, generator, verifier, max_
         # 各候補を評価
         scored_candidates = []
         for cand in candidates:
-            verdict, score, reason = verifier.verify(task, node.steps, cand, symptoms)
+            verdict, score, reason = verifier.verify(task, node.steps, cand)
             scored_candidates.append((cand, verdict, score, reason))
 
         # 最もスコアの高い候補を選択
@@ -131,10 +129,9 @@ if __name__ == "__main__":
     patient_info = input("> ")
 
     print("【症状を入力してください（例: 発熱、咳、腹痛）】")
-    symptoms_input = input("> ")
-    symptoms = [s.strip() for s in symptoms_input.split("、")]
+    symptoms = input("> ")
 
-    task = "患者の症例を段階的に推測すること"
+    task = "患者の症例を段階的に推測すること（風邪や日常症状に限定）"
 
     generator = StepGenerator()
     verifier = StepVerifier()
