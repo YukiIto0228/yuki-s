@@ -1,7 +1,11 @@
 import re
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    AutoModelForSequenceClassification
+)
 
 # -----------------------------
 # StepVerifier: 経費妥当性検証器
@@ -40,9 +44,9 @@ class StepVerifier:
                     return 1.0
                 else:
                     return 0.3
-        return 0.5  # 不明項目は中間評価
+        return 0.5
 
-    # 社内規程スコア（上限チェック）
+    # 社内規程スコア
     def _rule_score(self, step_text):
         for item, rule in self.RULES.items():
             if item in step_text:
@@ -55,11 +59,18 @@ class StepVerifier:
 
     # LLM分類スコア
     def _llm_score(self, step_text):
-        inputs = self.tokenizer(step_text, return_tensors="pt", truncation=True, max_length=512).to(self.device)
+        inputs = self.tokenizer(
+            step_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=512
+        ).to(self.device)
+
         with torch.no_grad():
             logits = self.model(**inputs).logits
             probs = F.softmax(logits, dim=-1)[0]
             cls_score, cls_idx = torch.max(probs, dim=0)
+
         return cls_score.item(), self.labels[cls_idx.item()]
 
     # 総合評価
@@ -69,10 +80,13 @@ class StepVerifier:
         rule_score = self._rule_score(step_text)
         llm_score, llm_label = self._llm_score(step_text)
 
-        # 重み付き統合
-        final_score = 0.3 * num_score + 0.3 * reason_score + 0.2 * rule_score + 0.2 * llm_score
+        final_score = (
+            0.3 * num_score +
+            0.3 * reason_score +
+            0.2 * rule_score +
+            0.2 * llm_score
+        )
 
-        # 最終判定
         if final_score >= 0.75:
             verdict = "妥当"
         elif final_score >= 0.5:
@@ -90,6 +104,7 @@ class StepVerifier:
 
         return verdict, scores
 
+
 # -----------------------------
 # StepGenerator
 # -----------------------------
@@ -98,12 +113,14 @@ class StepGenerator:
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name).to(self.device)
+
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def generate(self, context, num_candidates=3):
         inputs = self.tokenizer(context, return_tensors="pt").to(self.device)
         input_len = inputs["input_ids"].shape[1]
+
         outputs = self.model.generate(
             **inputs,
             max_new_tokens=40,
@@ -112,12 +129,18 @@ class StepGenerator:
             temperature=0.7,
             pad_token_id=self.tokenizer.eos_token_id
         )
+
         steps = []
         for seq in outputs:
-            step = self.tokenizer.decode(seq[input_len:], skip_special_tokens=True).strip()
+            step = self.tokenizer.decode(
+                seq[input_len:],
+                skip_special_tokens=True
+            ).strip()
             if step:
                 steps.append(step)
+
         return steps
+
 
 # -----------------------------
 # Reasoning Node & Beam Search
@@ -129,30 +152,55 @@ class ReasoningNode:
         self.parent = parent
 
     def extend(self, step, step_score):
-        return ReasoningNode(self.steps + [step], self.score + step_score, parent=self)
+        return ReasoningNode(
+            self.steps + [step],
+            self.score + step_score,
+            parent=self
+        )
+
 
 def beam_search(task, facts, beam_size, max_depth, M, generator, verifier):
     beam = [ReasoningNode([], 0.0)]
+
     for depth in range(max_depth):
         print(f"\n=== Depth {depth + 1} ===")
         candidates = []
+
         for node in beam:
-            context = f"課題: {task}\n観察結果: {facts}\nこれまでの考察: {' '.join(node.steps)}\n次の経費ステップ:"
+            next_step_id = len(node.steps) + 1
+
+            context = f"""課題:
+{task}
+
+観察結果:
+{facts}
+
+これまでのSTEP:
+{' '.join(node.steps)}
+
+次のSTEP（STEP{next_step_id}: から書いてください）:
+"""
+
             steps = generator.generate(context, M)
+
             for step in steps:
                 verdict, scores = verifier.verify(step)
                 final_score = scores["final"]
                 new_node = node.extend(step, final_score)
                 candidates.append(new_node)
-                print(f"候補: {step[:60].replace(chr(10),' ')}")
+
+                print(f"候補: {step.replace(chr(10),' ')[:80]}")
                 print(f"  判定: {verdict}, 総合スコア: {final_score:.2f}")
                 print(f"  指標スコア: {scores}")
-        # Beam pruning
+
         candidates.sort(key=lambda n: n.score, reverse=True)
         beam = candidates[:beam_size]
+
         if not beam:
             break
+
     return beam
+
 
 # -----------------------------
 # 実行例
@@ -161,8 +209,15 @@ if __name__ == "__main__":
     print("【観察結果・事実を入力】")
     facts = input("> ")
 
-    print("\n【課題（経費妥当性の判定など）を入力】")
-    task = input("> ")
+    # STEP形式で固定された task
+    task = """以下の形式で、経費の合計算出と妥当性判断を段階的に行ってください。
+各STEPでは「新しい1つの処理または判断」だけを書いてください。
+
+STEP1: 経費項目と金額を抽出する
+STEP2: 経費の合計金額を計算する
+STEP3: 社内規程（上限・用途）と照合する
+STEP4: 全体として妥当かを判断する
+"""
 
     generator = StepGenerator()
     verifier = StepVerifier()
@@ -171,7 +226,7 @@ if __name__ == "__main__":
         task=task,
         facts=facts,
         beam_size=2,
-        max_depth=2,
+        max_depth=4,
         M=3,
         generator=generator,
         verifier=verifier
@@ -182,7 +237,6 @@ if __name__ == "__main__":
         print(f"\n[候補 {i+1}] 累積スコア: {node.score:.2f}")
         for step in node.steps:
             print("-", step)
-
 
 
 
