@@ -9,7 +9,7 @@ from transformers import pipeline
 # =========================
 generator = pipeline(
     "text2text-generation",
-    model="rinna/japanese-t5-base"
+    model="sonoisa/t5-base-japanese"
 )
 
 
@@ -64,4 +64,5 @@ print(backoffice_text_organizer(sample_text, "bullet"))
 
 print("\n【カテゴリ推定】")
 print(backoffice_text_organizer(sample_text, "category"))
+
 
