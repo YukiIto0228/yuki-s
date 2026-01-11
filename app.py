@@ -6,20 +6,25 @@ import torch
 import re
 
 # =========================
-# 2. モデルロード（CPU + 軽量モデル）
+# 2. モデルロード（CPU + 8bit量子化）
 # =========================
-model_name = "rinna/japanese-gpt-1b"  # 誰でもログイン不要
+model_name = "rinna/japanese-gpt-1b"  # 認証不要で誰でもアクセス可能
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     device_map="cpu",
-    torch_dtype=torch.float16  # 軽くする
+    load_in_8bit=True  # CPUでも軽量に動くように8bit量子化
 )
 
 # =========================
 # 3. 経費申請支援アプリ
 # =========================
 def expense_application_assistant(text, mode):
+    """
+    経費申請文を対象に、情報抽出・整理・確認支援を行う
+    """
+
+    # few-shotプロンプト（複数例で精度向上）
     few_shot_examples = """
 例1:
 入力：会議で使用するため文房具を購入しました。事前に申請済みです。
@@ -52,6 +57,9 @@ def expense_application_assistant(text, mode):
     else:
         return "エラー：mode が不正です"
 
+    # =========================
+    # 4. モデル推論
+    # =========================
     inputs = tokenizer(prompt, return_tensors="pt")
     outputs = model.generate(
         **inputs,
@@ -61,12 +69,15 @@ def expense_application_assistant(text, mode):
     )
     output_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    # 出力補正
+    # =========================
+    # 5. 出力検証・補正
+    # =========================
     if mode in ["summary", "bullet"]:
         if not re.search(r"購入物", output_text):
             output_text += "\n購入物: 不明"
         if not re.search(r"申請区分", output_text):
             output_text += "\n申請区分: 不明"
+
     elif mode == "check":
         if "はい" not in output_text and "いいえ" not in output_text:
             output_text += " 不明"
@@ -74,7 +85,7 @@ def expense_application_assistant(text, mode):
     return output_text
 
 # =========================
-# 4. 動作確認
+# 6. 動作確認
 # =========================
 sample_text = (
     "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
