@@ -1,17 +1,20 @@
 # =========================
 # 1. ライブラリ
 # =========================
-from transformers import pipeline
-
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+import re
 
 # =========================
-# 2. モデルロード（T5日本語）
+# 2. モデルロード（CPU + 量子化済み軽量モデル）
 # =========================
-generator = pipeline(
-    "text2text-generation",
-    model="sonoisa/t5-base-japanese"
+model_name = "meta-llama/Llama-2-3b-chat-hf"  # Chat対応の軽量モデル
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    device_map="cpu",
+    load_in_8bit=True  # CPUでも動くように量子化
 )
-
 
 # =========================
 # 3. 経費申請支援アプリ
@@ -21,63 +24,71 @@ def expense_application_assistant(text, mode):
     経費申請文を対象に、情報抽出・整理・確認支援を行う
     """
 
+    # few-shotプロンプト（複数例で精度向上）
+    few_shot_examples = """
+例1:
+入力：会議で使用するため文房具を購入しました。事前に申請済みです。
+出力：
+購入物：文房具
+理由：会議で使用するため
+申請区分：事前申請
+
+例2:
+入力：社外セミナー参加費として交通費と宿泊費を申請します。
+出力：
+購入物：交通費、宿泊費
+理由：社外セミナー参加
+申請区分：事前申請
+
+例3:
+入力：実験用ケーブルを購入しました。急ぎのため事後申請です。
+出力：
+購入物：ケーブル
+理由：実験用
+申請区分：事後申請
+"""
+
     if mode == "summary":
-        prompt = (
-            "次の例にならって、経費申請文から情報を抜き出してください。\n\n"
-            "【例】\n"
-            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
-            "出力：\n"
-            "購入物：文房具\n"
-            "理由：会議で使用するため\n"
-            "申請区分：事前申請\n\n"
-            "【入力】\n"
-            f"{text}\n\n"
-            "【出力】\n"
-        )
-
+        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
     elif mode == "bullet":
-        prompt = (
-            "次の例にならって、経費申請文を整理してください。\n\n"
-            "【例】\n"
-            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
-            "出力：\n"
-            "・購入物：文房具\n"
-            "・購入理由：会議で使用するため\n"
-            "・申請区分：事前申請\n\n"
-            "【入力】\n"
-            f"{text}\n\n"
-            "【出力】\n"
-        )
-
+        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
     elif mode == "check":
-        prompt = (
-            "次の例にならって判断してください。\n\n"
-            "【例】\n"
-            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
-            "出力：\n"
-            "購入物は明確ですか：はい\n"
-            "理由は明確ですか：はい\n"
-            "申請区分は明確ですか：はい\n\n"
-            "【入力】\n"
-            f"{text}\n\n"
-            "【出力】\n"
-        )
-
+        prompt = f"{few_shot_examples}\n入力：{text}\n出力：購入物は明確ですか："
     else:
         return "エラー：mode が不正です"
 
-    output = generator(
-        prompt,
-        max_new_tokens=80,
+    # =========================
+    # 4. モデル推論
+    # =========================
+    inputs = tokenizer(prompt, return_tensors="pt")
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=150,
         do_sample=False,
         repetition_penalty=1.2
     )
+    output_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    return output[0]["generated_text"]
+    # =========================
+    # 5. 出力検証・補正
+    # =========================
+    if mode in ["summary", "bullet"]:
+        # 購入物が抜けていれば補完
+        if not re.search(r"購入物", output_text):
+            output_text += "\n購入物: 不明"
+        # 申請区分が抜けていれば補完
+        if not re.search(r"申請区分", output_text):
+            output_text += "\n申請区分: 不明"
 
+    elif mode == "check":
+        # 「はい/いいえ」で応答できるように補完
+        if "はい" not in output_text and "いいえ" not in output_text:
+            output_text += " 不明"
+
+    return output_text
 
 # =========================
-# 4. 動作確認
+# 6. 動作確認
 # =========================
 sample_text = (
     "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
