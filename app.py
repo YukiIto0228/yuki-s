@@ -6,14 +6,13 @@ import torch
 import re
 
 # =========================
-# 2. モデルロード（CPU + 8bit量子化）
+# 2. モデルロード（CPU, 量子化なし）
 # =========================
-model_name = "rinna/japanese-gpt-1b"  # 認証不要で誰でもアクセス可能
+model_name = "rinna/japanese-gpt-1b"  # 認証不要・誰でも使える軽量モデル
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
-    device_map="cpu",
-    load_in_8bit=True  # CPUでも軽量に動くように8bit量子化
+    device_map="cpu"  # CPUで動かす
 )
 
 # =========================
@@ -23,8 +22,6 @@ def expense_application_assistant(text, mode):
     """
     経費申請文を対象に、情報抽出・整理・確認支援を行う
     """
-
-    # few-shotプロンプト（複数例で精度向上）
     few_shot_examples = """
 例1:
 入力：会議で使用するため文房具を購入しました。事前に申請済みです。
@@ -100,4 +97,6 @@ print(expense_application_assistant(sample_text, "bullet"))
 
 print("\n【確認結果】")
 print(expense_application_assistant(sample_text, "check"))
+
+
 
