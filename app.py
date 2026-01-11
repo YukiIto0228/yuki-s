@@ -1,30 +1,23 @@
-# =========================
-# 1. ライブラリ
-# =========================
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import re
 
 # =========================
-# 2. モデルロード（CPU + 量子化済み軽量モデル）
+# モデル設定
 # =========================
-model_name = "meta-llama/Llama-2-3b-chat-hf"  # Chat対応の軽量モデル
+model_name = "rinna/japanese-gpt-neox-3.6b-instruction"
+
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     device_map="cpu",
-    load_in_8bit=True  # CPUでも動くように量子化
+    load_in_8bit=True  # CPUでも使いやすい量子化
 )
 
 # =========================
-# 3. 経費申請支援アプリ
+# 経費申請アシスタント
 # =========================
 def expense_application_assistant(text, mode):
-    """
-    経費申請文を対象に、情報抽出・整理・確認支援を行う
-    """
-
-    # few-shotプロンプト（複数例で精度向上）
     few_shot_examples = """
 例1:
 入力：会議で使用するため文房具を購入しました。事前に申請済みです。
@@ -39,27 +32,9 @@ def expense_application_assistant(text, mode):
 購入物：交通費、宿泊費
 理由：社外セミナー参加
 申請区分：事前申請
-
-例3:
-入力：実験用ケーブルを購入しました。急ぎのため事後申請です。
-出力：
-購入物：ケーブル
-理由：実験用
-申請区分：事後申請
 """
+    prompt = f"{few_shot_examples}\n入力：{text}\n出力："
 
-    if mode == "summary":
-        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
-    elif mode == "bullet":
-        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
-    elif mode == "check":
-        prompt = f"{few_shot_examples}\n入力：{text}\n出力：購入物は明確ですか："
-    else:
-        return "エラー：mode が不正です"
-
-    # =========================
-    # 4. モデル推論
-    # =========================
     inputs = tokenizer(prompt, return_tensors="pt")
     outputs = model.generate(
         **inputs,
@@ -69,26 +44,20 @@ def expense_application_assistant(text, mode):
     )
     output_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    # =========================
-    # 5. 出力検証・補正
-    # =========================
+    # 簡易補正
     if mode in ["summary", "bullet"]:
-        # 購入物が抜けていれば補完
         if not re.search(r"購入物", output_text):
             output_text += "\n購入物: 不明"
-        # 申請区分が抜けていれば補完
         if not re.search(r"申請区分", output_text):
             output_text += "\n申請区分: 不明"
-
     elif mode == "check":
-        # 「はい/いいえ」で応答できるように補完
         if "はい" not in output_text and "いいえ" not in output_text:
             output_text += " 不明"
 
     return output_text
 
 # =========================
-# 6. 動作確認
+# 動作確認
 # =========================
 sample_text = (
     "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
@@ -103,7 +72,5 @@ print(expense_application_assistant(sample_text, "bullet"))
 
 print("\n【確認結果】")
 print(expense_application_assistant(sample_text, "check"))
-
-
 
 
