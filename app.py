@@ -1,12 +1,5 @@
-# =========================
-# 1. ライブラリ
-# =========================
 from transformers import pipeline
 
-
-# =========================
-# 2. モデルロード（T5系）
-# =========================
 generator = pipeline(
     "text2text-generation",
     model="sonoisa/t5-base-japanese"
@@ -14,26 +7,37 @@ generator = pipeline(
 
 
 # =========================
-# 3. バックオフィス支援アプリ
+# 3. 経費申請支援アプリ
 # =========================
-def backoffice_text_organizer(text, mode):
+def expense_application_assistant(text, mode):
+    """
+    経費申請文を対象に、要約・整理・判断支援を行う関数
+    """
 
     if mode == "summary":
+        # 経理担当者が即判断できる要点要約
         prompt = (
-            "次の申請文を要点3つで簡潔に要約してください。\n"
+            "次の経費申請文について、"
+            "経理担当者が確認すべき要点を3点で簡潔に要約してください。\n"
+            "（何を購入したか、理由、事前申請か事後申請か）\n"
             f"{text}"
         )
 
     elif mode == "bullet":
+        # 記載揺れを抑えるための構造化
         prompt = (
-            "次の文章をバックオフィス業務向けに箇条書きで整理してください。\n"
+            "次の経費申請文を、経理担当者向けに箇条書きで整理してください。\n"
+            "・購入物\n"
+            "・購入理由\n"
+            "・申請タイミング（事前／事後）\n"
             f"{text}"
         )
 
-    elif mode == "category":
+    elif mode == "check":
+        # 規程確認・差し戻し判断の補助
         prompt = (
-            "次の文章の業務カテゴリを1つ選び、理由を簡潔に述べてください。\n"
-            "カテゴリ：経費申請、設備購入、問い合わせ、その他\n"
+            "次の経費申請文について、"
+            "確認が必要な点や不明点があれば簡潔に指摘してください。\n"
             f"{text}"
         )
 
@@ -42,7 +46,7 @@ def backoffice_text_organizer(text, mode):
 
     output = generator(
         prompt,
-        max_new_tokens=80
+        max_new_tokens=100
     )
 
     return output[0]["generated_text"]
@@ -57,12 +61,13 @@ sample_text = (
 )
 
 print("【要点要約】")
-print(backoffice_text_organizer(sample_text, "summary"))
+print(expense_application_assistant(sample_text, "summary"))
 
 print("\n【箇条書き整理】")
-print(backoffice_text_organizer(sample_text, "bullet"))
+print(expense_application_assistant(sample_text, "bullet"))
 
-print("\n【カテゴリ推定】")
-print(backoffice_text_organizer(sample_text, "category"))
+print("\n【確認事項】")
+print(expense_application_assistant(sample_text, "check"))
+
 
 
