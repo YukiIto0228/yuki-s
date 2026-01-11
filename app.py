@@ -1,21 +1,23 @@
+# =========================
+# 1. ライブラリ
+# =========================
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import re
 
 # =========================
-# モデル設定
+# 2. モデルロード（CPU + 軽量モデル）
 # =========================
-model_name = "rinna/japanese-gpt-neox-3.6b-instruction"
-
+model_name = "rinna/japanese-gpt-1b"  # 誰でもログイン不要
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     device_map="cpu",
-    load_in_8bit=True  # CPUでも使いやすい量子化
+    torch_dtype=torch.float16  # 軽くする
 )
 
 # =========================
-# 経費申請アシスタント
+# 3. 経費申請支援アプリ
 # =========================
 def expense_application_assistant(text, mode):
     few_shot_examples = """
@@ -32,8 +34,23 @@ def expense_application_assistant(text, mode):
 購入物：交通費、宿泊費
 理由：社外セミナー参加
 申請区分：事前申請
+
+例3:
+入力：実験用ケーブルを購入しました。急ぎのため事後申請です。
+出力：
+購入物：ケーブル
+理由：実験用
+申請区分：事後申請
 """
-    prompt = f"{few_shot_examples}\n入力：{text}\n出力："
+
+    if mode == "summary":
+        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
+    elif mode == "bullet":
+        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
+    elif mode == "check":
+        prompt = f"{few_shot_examples}\n入力：{text}\n出力：購入物は明確ですか："
+    else:
+        return "エラー：mode が不正です"
 
     inputs = tokenizer(prompt, return_tensors="pt")
     outputs = model.generate(
@@ -44,7 +61,7 @@ def expense_application_assistant(text, mode):
     )
     output_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    # 簡易補正
+    # 出力補正
     if mode in ["summary", "bullet"]:
         if not re.search(r"購入物", output_text):
             output_text += "\n購入物: 不明"
@@ -57,7 +74,7 @@ def expense_application_assistant(text, mode):
     return output_text
 
 # =========================
-# 動作確認
+# 4. 動作確認
 # =========================
 sample_text = (
     "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
@@ -72,5 +89,4 @@ print(expense_application_assistant(sample_text, "bullet"))
 
 print("\n【確認結果】")
 print(expense_application_assistant(sample_text, "check"))
-
 
