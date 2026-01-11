@@ -6,56 +6,46 @@ import torch
 import re
 
 # =========================
-# 2. モデルロード（CPU, 量子化なし）
+# 2. モデルロード（軽量で誰でも使用可）
 # =========================
-model_name = "rinna/japanese-gpt-1b"  # 認証不要・誰でも使える軽量モデル
+model_name = "rinna/japanese-gpt-1b"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
-    device_map="cpu"  # CPUで動かす
+    device_map="auto",  # CPU/GPU自動割当
 )
 
 # =========================
-# 3. 経費申請支援アプリ
+# 3. 経費申請支援アプリ（ゼロショット形式）
 # =========================
 def expense_application_assistant(text, mode):
     """
     経費申請文を対象に、情報抽出・整理・確認支援を行う
     """
-    few_shot_examples = """
-例1:
-入力：会議で使用するため文房具を購入しました。事前に申請済みです。
-出力：
-購入物：文房具
-理由：会議で使用するため
-申請区分：事前申請
+    # =========================
+    # プロンプト作成
+    # =========================
+    if mode in ["summary", "bullet"]:
+        prompt = f"""以下の経費申請文から情報を抽出してください。
+出力フォーマット:
+購入物: ...
+理由: ...
+申請区分: ...
 
-例2:
-入力：社外セミナー参加費として交通費と宿泊費を申請します。
-出力：
-購入物：交通費、宿泊費
-理由：社外セミナー参加
-申請区分：事前申請
-
-例3:
-入力：実験用ケーブルを購入しました。急ぎのため事後申請です。
-出力：
-購入物：ケーブル
-理由：実験用
-申請区分：事後申請
-"""
-
-    if mode == "summary":
-        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
-    elif mode == "bullet":
-        prompt = f"{few_shot_examples}\n入力：{text}\n出力："
+入力文:
+{text}
+出力:"""
     elif mode == "check":
-        prompt = f"{few_shot_examples}\n入力：{text}\n出力：購入物は明確ですか："
+        prompt = f"""以下の経費申請文の購入物が明確か確認してください。はい/いいえで答えてください。
+
+入力文:
+{text}
+出力:"""
     else:
         return "エラー：mode が不正です"
 
     # =========================
-    # 4. モデル推論
+    # モデル推論
     # =========================
     inputs = tokenizer(prompt, return_tensors="pt")
     outputs = model.generate(
@@ -67,22 +57,25 @@ def expense_application_assistant(text, mode):
     output_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     # =========================
-    # 5. 出力検証・補正
+    # 出力整形
     # =========================
     if mode in ["summary", "bullet"]:
-        if not re.search(r"購入物", output_text):
-            output_text += "\n購入物: 不明"
-        if not re.search(r"申請区分", output_text):
-            output_text += "\n申請区分: 不明"
-
+        # 「購入物」「理由」「申請区分」を抽出
+        result = {}
+        for key in ["購入物", "理由", "申請区分"]:
+            match = re.search(f"{key}[:：](.+)", output_text)
+            result[key] = match.group(1).strip() if match else "不明"
+        return result
     elif mode == "check":
-        if "はい" not in output_text and "いいえ" not in output_text:
-            output_text += " 不明"
-
-    return output_text
+        if "はい" in output_text:
+            return "はい"
+        elif "いいえ" in output_text:
+            return "いいえ"
+        else:
+            return "不明"
 
 # =========================
-# 6. 動作確認
+# 4. 動作確認
 # =========================
 sample_text = (
     "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
@@ -97,6 +90,4 @@ print(expense_application_assistant(sample_text, "bullet"))
 
 print("\n【確認結果】")
 print(expense_application_assistant(sample_text, "check"))
-
-
 
