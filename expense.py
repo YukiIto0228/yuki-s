@@ -1,22 +1,27 @@
-# expense_checker.py
+# expense_cli.py
 import re
 import torch
-from transformers import BertTokenizer, BertForTokenClassification
-import streamlit as st
+from transformers import BertJapaneseTokenizer, BertForTokenClassification
 
 # ----------------------
-# STEP1: 経費情報抽出
+# STEP0: ラベル定義
 # ----------------------
-
-# サンプルラベル
 LABELS = ["O", "B-AMOUNT", "B-PURPOSE", "B-DATE"]
 
-# モデルとトークナイザーのロード
-tokenizer = BertTokenizer.from_pretrained("cl-tohoku/bert-base-japanese-v3")
-model = BertForTokenClassification.from_pretrained("cl-tohoku/bert-base-japanese-v3", num_labels=len(LABELS))
+# ----------------------
+# STEP1: モデル準備
+# ----------------------
+tokenizer = BertJapaneseTokenizer.from_pretrained("cl-tohoku/bert-base-japanese-v3")
+model = BertForTokenClassification.from_pretrained(
+    "cl-tohoku/bert-base-japanese-v3",
+    num_labels=len(LABELS)
+)
+model.eval()  # 推論モード
 
+# ----------------------
+# STEP2: 経費情報抽出
+# ----------------------
 def extract_entities(text):
-    """簡易的なNER推論（デモ用）"""
     tokens = tokenizer.tokenize(text)
     inputs = tokenizer.encode(text, return_tensors="pt")
     with torch.no_grad():
@@ -30,53 +35,55 @@ def extract_entities(text):
     return entities
 
 # ----------------------
-# STEP2: 合計金額計算
+# STEP3: 合計金額計算
 # ----------------------
 def sum_amount(entities):
-    """抽出された金額の合計"""
     total = 0
     for token, label in entities:
         if label == "B-AMOUNT":
-            # 数字だけ抽出
             nums = re.findall(r"\d+", token)
             if nums:
                 total += int(nums[0])
     return total
 
 # ----------------------
-# STEP3: 規程チェック
+# STEP4: 規程チェック
 # ----------------------
-MAX_AMOUNT = 50000  # 例：上限5万円
+MAX_AMOUNT = 50000  # 上限例
 
 def check_rules(entities):
     reasons = []
     total = sum_amount(entities)
     if total > MAX_AMOUNT:
         reasons.append(f"合計金額({total}円)が上限({MAX_AMOUNT}円)を超えています")
-    # 用途チェック例
+    # 簡易用途チェック
     for token, label in entities:
         if label == "B-PURPOSE" and "遊び" in token:
             reasons.append("遊興費は不可")
     return reasons
 
 # ----------------------
-# Streamlit UI
+# STEP5: CLI入力
 # ----------------------
-st.title("経費申請妥当性チェック (デモ版)")
+if __name__ == "__main__":
+    print("=== 経費申請妥当性チェック CLI版 ===")
+    text = input("申請内容を入力してください:\n> ")
 
-text = st.text_area("申請内容を入力してください:")
-
-if st.button("チェック実行"):
     entities = extract_entities(text)
-    st.write("抽出結果:", entities)
+    print("\n--- 抽出結果 ---")
+    for token, label in entities:
+        print(f"{token}: {label}")
 
     total = sum_amount(entities)
-    st.write(f"合計金額: {total}円")
+    print(f"\n合計金額: {total}円")
 
     reasons = check_rules(entities)
+    print("\n--- 妥当性チェック ---")
     if reasons:
-        st.write("妥当性チェック: NG")
+        print("NG (確認が必要)")
         for r in reasons:
-            st.write("-", r)
+            print("-", r)
     else:
-        st.write("妥当性チェック: OK")
+        print("OK (問題なし)")
+
+
