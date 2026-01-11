@@ -30,31 +30,35 @@ expense_ner_dataset = [
 # ----------------------
 # 使用するラベルセット
 # ----------------------
+# ラベルマッピング
 label_list = ["O", "B-DATE", "B-PURPOSE", "B-AMOUNT"]
 label_to_id = {l: i for i, l in enumerate(label_list)}
 
-# ----------------------
-# データセットをトークン化して TokenClassification 用に変換
-# ----------------------
+# 文字列ラベルを int に変換
 def char_labels_to_token_labels(example, tokenizer, label_to_id):
-    tokenized_inputs = tokenizer(example["text"], truncation=True, is_split_into_words=False, return_offsets_mapping=True)
-    tokens = tokenized_inputs.tokens()
-    labels = [label_to_id["O"]] * len(tokens)
+    tokenized_inputs = tokenizer(
+        example["text"],
+        truncation=True,
+        is_split_into_words=False,
+        return_offsets_mapping=True
+    )
     
-    for start, end, label in example["labels"]:
+    labels = [label_to_id["O"]] * len(tokenized_inputs["input_ids"])
+    
+    for start, end, label_str in example["labels"]:
         for i, (tok_start, tok_end) in enumerate(tokenized_inputs["offset_mapping"]):
             if tok_end <= start:
                 continue
             if tok_start >= end:
                 break
-            labels[i] = label_to_id[label]
+            labels[i] = label_to_id[label_str]  # 文字列 → int に変換
 
     tokenized_inputs["labels"] = labels
-    # offset_mappingは不要なので削除
     tokenized_inputs.pop("offset_mapping")
     return tokenized_inputs
 
 def load_dataset(tokenizer):
     dataset = Dataset.from_list(expense_ner_dataset)
     dataset = dataset.map(lambda x: char_labels_to_token_labels(x, tokenizer, label_to_id))
+
     return dataset
