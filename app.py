@@ -1,68 +1,93 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-import torch
-import re
+from transformers import pipeline
 
-# ===== モデル設定（軽量で認証不要の日本語モデル） =====
-model_name = "rinna/japanese-gpt-1b"
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    device_map="auto",  # GPUがあれば自動で割り当て
-    torch_dtype=torch.float16,  # 可能なら軽量化
-)
-
+# =========================
+# 2. モデルロード（T5日本語）
+# =========================
 generator = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    max_length=256,
-    do_sample=True,
-    top_p=0.95,
-    temperature=0.7,
+    "text2text-generation",
+    model="sonoisa/t5-base-japanese"
 )
 
-# ===== モデル出力の整理関数 =====
-def parse_expense_output(output_text):
+
+# =========================
+# 3. 経費申請支援アプリ
+# =========================
+def expense_application_assistant(text, mode):
     """
-    モデル出力から「購入物」「理由」「申請区分」を抽出。
-    複数の入力文がある場合はそれぞれの出力を辞書に分ける。
+    経費申請文を対象に、情報抽出・整理・確認支援を行う
     """
-    results = []
 
-    # 「入力：〜 出力：」ごとに分割
-    pattern = r"入力[:：](.+?)\s*出力[:：](.+?)(?=(?:\n入力[:：])|$)"
-    matches = re.findall(pattern, output_text, re.DOTALL)
+    if mode == "summary":
+        prompt = (
+            "次の例にならって、経費申請文から情報を抜き出してください。\n\n"
+            "【例】\n"
+            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
+            "出力：\n"
+            "購入物：文房具\n"
+            "理由：会議で使用するため\n"
+            "申請区分：事前申請\n\n"
+            "【入力】\n"
+            f"{text}\n\n"
+            "【出力】\n"
+        )
 
-    for input_text, out_text in matches:
-        entry = {}
-        for key in ["購入物", "理由", "申請区分"]:
-            match = re.search(rf"{key}[:：]\s*(.*?)(?:\n|$)", out_text)
-            entry[key] = match.group(1).strip() if match else "不明"
-        entry["入力文"] = input_text.strip()
-        results.append(entry)
+    elif mode == "bullet":
+        prompt = (
+            "次の例にならって、経費申請文を整理してください。\n\n"
+            "【例】\n"
+            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
+            "出力：\n"
+            "・購入物：文房具\n"
+            "・購入理由：会議で使用するため\n"
+            "・申請区分：事前申請\n\n"
+            "【入力】\n"
+            f"{text}\n\n"
+            "【出力】\n"
+        )
 
-    return results
+    elif mode == "check":
+        prompt = (
+            "次の例にならって判断してください。\n\n"
+            "【例】\n"
+            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
+            "出力：\n"
+            "購入物は明確ですか：はい\n"
+            "理由は明確ですか：はい\n"
+            "申請区分は明確ですか：はい\n\n"
+            "【入力】\n"
+            f"{text}\n\n"
+            "【出力】\n"
+        )
 
-# ===== テスト用入力 =====
-texts = [
-    "会議で使用するため文房具を購入しました。事前に申請済みです。",
-    "実験用ケーブルを購入しました。急ぎのため事後申請です。",
-]
+    else:
+        return "エラー：mode が不正です"
 
-# ===== モデルに入力して出力取得 =====
-prompt_template = """以下の文章から「購入物」「理由」「申請区分」を抽出してください。
-入力: {text}
-出力:"""
+    output = generator(
+        prompt,
+        max_new_tokens=80,
+        do_sample=False,
+        repetition_penalty=1.2
+    )
 
-all_output = ""
-for t in texts:
-    prompt = prompt_template.format(text=t)
-    out = generator(prompt, max_new_tokens=128)[0]["generated_text"]
-    all_output += out + "\n"
+    return output[0]["generated_text"]
 
-# ===== 整理して表示 =====
-parsed = parse_expense_output(all_output)
-for p in parsed:
-    print(p)
+
+# =========================
+# 4. 動作確認
+# =========================
+sample_text = (
+    "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
+    "事前に申請を行う時間が取れなかったため、事後での申請となります。"
+)
+
+print("【要点抽出】")
+print(expense_application_assistant(sample_text, "summary"))
+
+print("\n【整理結果】")
+print(expense_application_assistant(sample_text, "bullet"))
+
+print("\n【確認結果】")
+print(expense_application_assistant(sample_text, "check"))
+
 
