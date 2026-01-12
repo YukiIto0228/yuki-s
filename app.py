@@ -1,75 +1,44 @@
 from transformers import pipeline
 
-# =========================
-# 1. モデルロード（T5日本語）
-# =========================
 generator = pipeline(
     "text2text-generation",
     model="sonoisa/t5-base-japanese"
 )
 
-# =========================
-# 2. 経費申請支援アプリ
-# =========================
-def expense_application_assistant(text, mode):
-    """
-    経費申請文を対象に、情報抽出・確認支援を行う
-    """
+# 1. 内部ウォームアップ用の例文（表示はしない）
+dummy_examples = [
+    "会議で使用するため文房具を購入しました。事前に申請済みです。",
+    "急遽必要になった実験用ケーブルを購入しました。事後申請です。"
+]
 
-    if mode == "summary":
-        prompt = (
-            "次の例にならって、経費申請文から情報を抜き出してください。\n\n"
-            "【例】\n"
-            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
-            "出力：\n"
-            "購入物：文房具\n"
-            "理由：会議で使用するため\n"
-            "申請区分：事前申請\n\n"
-            "【入力】\n"
-            f"{text}\n\n"
-            "【出力】\n"
-        )
-
-    elif mode == "check":
-        prompt = (
-            "次の例にならって判断してください。\n\n"
-            "【例】\n"
-            "入力：会議で使用するため文房具を購入しました。事前に申請済みです。\n"
-            "出力：\n"
-            "購入物は明確ですか：はい\n"
-            "理由は明確ですか：はい\n"
-            "申請区分は明確ですか：はい\n\n"
-            "【入力】\n"
-            f"{text}\n\n"
-            "【出力】\n"
-        )
-
-    else:
-        return "エラー：mode が不正です"
-
-    output = generator(
-        prompt,
-        max_new_tokens=80,
-        do_sample=False,
-        repetition_penalty=1.2
+# 例文を内部的に生成させてモデルにタスク形式を認識させる
+for example in dummy_examples:
+    _ = generator(
+        f"経費申請文から購入物・理由・申請区分を抽出してください：{example}",
+        max_new_tokens=10,  # 出力はどうでもよいので小さく
+        do_sample=False
     )
 
-    return output[0]["generated_text"]
+# 2. CLI入力や実際のタスク入力
+def expense_task(text, mode):
+    if mode == "summary":
+        prompt = f"経費申請文から購入物・理由・申請区分を抽出してください：{text}"
+    elif mode == "check":
+        prompt = f"経費申請文の情報が明確か判定してください：{text}"
+    else:
+        return "mode error"
 
-# =========================
-# 3. 動作確認
-# =========================
-sample_text = (
-    "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
-    "事前に申請を行う時間が取れなかったため、事後での申請となります。"
-)
+    output = generator(prompt, max_new_tokens=80, do_sample=False)
+    return output[0]["generated_text"].strip()
+
+# 実行例
+user_input = "昨日、急に必要になったため研究用ケーブルを購入しました。事後申請です。"
 
 print("【要点抽出】")
-print(expense_application_assistant(sample_text, "summary"))
+print(expense_task(user_input, "summary"))
 
 print("\n【確認結果】")
-print(expense_application_assistant(sample_text, "check"))
-
+print(expense_task(user_input, "check"))
 
 
 
