@@ -1,38 +1,52 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
+from transformers import pipeline
 
 # =========================
-# 2. モデルロード（LLM-JP日本語指示モデル）
+# モデルロード（T5日本語）
 # =========================
-model_name = "llm-jp/llm-jp-3-8x1.8b-instruct3"  # 無料 & Transformersで直接呼び出し可
-
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name)
-
 generator = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    device=0  # GPU使用時。CPUなら削除
+    "text2text-generation",
+    model="sonoisa/t5-base-japanese"
 )
 
 # =========================
-# 3. 経費申請支援アプリ
+# 内部ウォームアップ（例文でタスク形式を理解させる）
+# =========================
+dummy_examples = [
+    "会議で使用するため文房具を購入しました。事前に申請済みです。",
+    "急遽必要になった実験用ケーブルを購入しました。事後申請です。"
+]
+
+for example in dummy_examples:
+    # 出力は破棄、モデルにタスク形式を暗黙的に覚えさせるだけ
+    _ = generator(
+        f"経費申請文から購入物・理由・申請区分を抽出してください。"
+        f"出力形式は '購入物:XXX, 理由:XXX, 申請区分:XXX' にしてください。\n"
+        f"{example}",
+        max_new_tokens=5,
+        do_sample=False
+    )
+
+# =========================
+# 経費申請支援アプリ（CLI用）
 # =========================
 def expense_application_assistant(text, mode):
     """
-    経費申請文を対象に、情報抽出・確認支援を行う
+    経費申請文を対象に要点抽出・確認を行う
     """
 
     if mode == "summary":
         prompt = (
-            f"経費申請文: {text}\n"
-            "抽出結果: 購入物:, 理由:, 申請区分:"
+            f"次の経費申請文から購入物と理由、申請区分を抽出してください。"
+            f"出力形式は '購入物:XXX, 理由:XXX, 申請区分:XXX' にしてください。\n"
+            f"経費申請文: {text}\n出力:"
         )
 
     elif mode == "check":
         prompt = (
-            f"経費申請文: {text}\n"
-            "確認結果: 購入物は明確ですか:はい/いいえ, 理由は明確ですか:はい/いいえ, 申請区分は明確ですか:はい/いいえ"
+            f"次の経費申請文の情報が明確かどうか判定してください。"
+            f"出力形式は '購入物は明確ですか:はい/いいえ, 理由は明確ですか:はい/いいえ, 申請区分は明確ですか:はい/いいえ' にしてください。\n"
+            f"経費申請文: {text}\n出力:"
         )
 
     else:
@@ -47,20 +61,16 @@ def expense_application_assistant(text, mode):
 
     return output[0]["generated_text"].strip()
 
-
 # =========================
-# 4. 動作確認
+# CLI入力例
 # =========================
-sample_text = (
-    "昨日、実験で急に必要になったため研究用ケーブルを購入しました。"
-    "事前に申請を行う時間が取れなかったため、事後での申請となります。"
-)
+if __name__ == "__main__":
+    user_input = input("経費申請文を入力してください:\n")
 
-print("【要点抽出】")
-print(expense_application_assistant(sample_text, "summary"))
+    print("\n【要点抽出】")
+    print(expense_application_assistant(user_input, "summary"))
 
-print("\n【確認結果】")
-print(expense_application_assistant(sample_text, "check"))
-
+    print("\n【確認結果】")
+    print(expense_application_assistant(user_input, "check"))
 
 
